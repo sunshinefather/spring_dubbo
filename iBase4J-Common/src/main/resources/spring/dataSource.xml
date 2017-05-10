@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:util="http://www.springframework.org/schema/util"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans-4.0.xsd  
+    http://www.springframework.org/schema/context
+    http://www.springframework.org/schema/context/spring-context-4.0.xsd
+    http://www.springframework.org/schema/aop
+    http://www.springframework.org/schema/aop/spring-aop-4.0.xsd 
+    http://www.springframework.org/schema/util
+    http://www.springframework.org/schema/util/spring-util-4.0.xsd">
+        
+	<bean id="stat-filter" class="com.alibaba.druid.filter.stat.StatFilter" lazy-init="true">
+		<description>状态过滤器</description>
+		<property name="slowSqlMillis" value="3000" />
+		<property name="logSlowSql" value="true" />
+		<property name="mergeSql" value="true" />
+	</bean>
+	
+    <bean id="dataSourceParent" abstract="true" class="com.alibaba.druid.pool.DruidDataSource"
+		destroy-method="close" init-method="init" lazy-init="true">
+		<description>只读数据库连接</description>
+		<property name="driverClassName" value="${db.driver}" />
+		<!-- 初始化连接大小 -->
+		<property name="initialSize" value="${db.initialSize}" />
+		<!-- 连接池最大数量 -->
+		<property name="maxActive" value="${db.maxActive}" />
+		<!-- 连接池最小空闲 -->
+		<property name="minIdle" value="${db.minIdle}" />
+		<!-- 获取连接最大等待时间 -->
+		<property name="maxWait" value="${db.maxWait}" />
+		
+		<property name="proxyFilters">
+			<list>
+				<ref bean="stat-filter" />
+			</list>
+		</property>
+		<property name="filters" value="${druid.filters}" />
+		<property name="testWhileIdle" value="true" />
+		<property name="testOnBorrow" value="false" />
+		<property name="testOnReturn" value="false" />
+		<property name="validationQuery" value="SELECT 'x'" />
+		<property name="timeBetweenLogStatsMillis" value="60000" />
+		<!-- 配置一个连接在池中最小生存的时间，单位是毫秒 -->
+		<property name="minEvictableIdleTimeMillis" value="${db.minEvictableIdleTimeMillis}" />
+		<!-- 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒 -->
+		<property name="timeBetweenEvictionRunsMillis" value="${db.timeBetweenEvictionRunsMillis}" />
+	</bean>
+	
+	<bean id="readDataSource" parent="dataSourceParent">
+		<description>只读数据库连接</description>
+		<property name="url" value="${db.reader.url}" />
+		<property name="username" value="${db.reader.username}" />
+		<property name="password" value="${db.reader.password}" />
+		<!-- -->
+		<property name="defaultReadOnly" value="true" />
+	</bean>
+	<bean id="writeDataSource" parent="dataSourceParent">
+		<description>只写数据库连接</description>
+		<property name="url" value="${db.writer.url}" />
+		<property name="username" value="${db.writer.username}" />
+		<property name="password" value="${db.writer.password}" />
+		<property name="defaultReadOnly" value="false" />
+	</bean>
+	
+    <util:map id="targetDataSources" key-type="org.ibase4j.core.aspect.DynamicDataSourceGlobal" value-type="javax.sql.DataSource">
+	   <entry key="READ" value-ref="readDataSource"/>
+	   <entry key="WRITE" value-ref="writeDataSource"/>
+	</util:map>
+	
+	<util:map id="methodType" key-type="org.ibase4j.core.aspect.DynamicDataSourceGlobal">
+	     <entry key="READ" value=",get,select,count,list,query,load,find,"/>
+	     <entry key="WRITE" value=",add,insert,create,update,delete,remove,"/>
+	</util:map>
+	
+	<bean id="dataSource" class="org.ibase4j.core.aspect.DynamicDataSource" lazy-init="true">
+		<description>数据源</description>
+		<property name="targetDataSources" ref="targetDataSources"/>
+		<property name="defaultTargetDataSource" ref="writeDataSource" />
+		<property name="methodType" ref="methodType"/>
+	</bean>
+	
+	<!-- 切面 -->
+	<bean class="org.ibase4j.core.aspect.DataSourceAspect" />
+	
+	<!-- JdbcTemplate -->
+	<bean class="org.springframework.jdbc.core.JdbcTemplate">
+		<constructor-arg ref="dataSource" />
+	</bean>
+</beans>
